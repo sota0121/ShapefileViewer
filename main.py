@@ -34,21 +34,27 @@ class MainWindow(QWidget):
         exitAction = QAction('&Exit', self)
         exitAction.setShortcut('Ctrl+Q')
         exitAction.setStatusTip('Exit App')
-        exitAction.triggered.connect(self.QuitRatel)
+        exitAction.triggered.connect(self.QuitWindow)
         self.addAction(exitAction)
-        self.quitBtn.clicked.connect(self.QuitRatel)
+        self.quitBtn.clicked.connect(self.QuitWindow)
+
+        # Create Status bar
+        self.statusbar = QStatusBar()
+        self.statusbar.showMessage('Ready')
 
         # CreateView
         self.graphicsView = SVview.svView()
+        self.graphicsView.linkStatusbar(self.statusbar)
 
         # layout
         hbox = QHBoxLayout()
         hbox.addWidget(self.okBtn)
         hbox.addWidget(self.quitBtn)
-        # view and buttons
+        # widgets
         vbox = QVBoxLayout()
         vbox.addWidget(self.graphicsView)
         vbox.addLayout(hbox)
+        vbox.addWidget(self.statusbar)
         self.setLayout(vbox)
 
         # set window geometry from history
@@ -66,9 +72,13 @@ class MainWindow(QWidget):
             self.setGeometry(x, y, wid, height)
 
         # init title
-        self.setWindowFilePath('Ratel')
+        self.setWindowFilePath('ShapefileViewer')
+        self.setWindowIcon(QIcon('img/panda_icon.png'))
 
-    def QuitRatel(self):
+        # status bar
+
+
+    def QuitWindow(self):
         self.saveWndInfo()
         self.graphicsView.scene().OutputPrj()
         qApp.quit()
