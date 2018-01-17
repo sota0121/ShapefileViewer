@@ -16,6 +16,9 @@ class svView(QGraphicsView):
         # member
         self._numScheduledScalings = 0
         self.mposShowFlg = True
+        self.zoomfactor = 1.0
+        self.mposLL = [0.0,0.0]
+        self.mposNSEW = ['E','N']
 
         # D&D setting
         self.setAcceptDrops(True)
@@ -31,56 +34,24 @@ class svView(QGraphicsView):
     def linkStatusbar(self, stbar: QStatusBar):
         self.statusbar = stbar
 
-    def mkGridPen(self):
-        gridpen = QPen(QColor('grey'))
-        gridpen.setWidth(0)
-        gridpen.setStyle(Qt.DashLine)
-        return gridpen
-
+    def updateStatusbar(self):
+        lon = self.mposLL[0]
+        lat = self.mposLL[1]
+        EW = self.mposNSEW[0]
+        SN = self.mposNSEW[1]
+        zoomfactor = self.zoomfactor
+        msg = '{:.2f}'.format(lon) + EW + ' ' + '{:.2f}'.format(lat) + SN + ' ' + '{:.2f}'.format(zoomfactor)
+        self.statusbar.showMessage(msg)
 
     def initBaseMap(self):
-        self.resolution = 100 # pix / 度
-        self.meshWid = 1*self.resolution
-        self.baseMapWid = 360*self.resolution
-        self.baseMapHgt = 180*self.resolution
-
         # Basic Layer
-        self.basicLayer = QGraphicsRectItem()
-        self.basicLayer.setRect(0, 0, self.baseMapWid, self.baseMapHgt)
-        self.basicLayer.setBrush(QBrush(QColor('white')))
-        self.basicLayer.setFlag(QGraphicsItem.ItemIsMovable)
+        self.basicLayer = BaseMap(self)
         self.scene().addItem(self.basicLayer)
 
-        # Mesh Grid
-        # --Latitude(horizontal)
-        lats = self.baseMapHgt / self.meshWid
-        for ilat in range(int(lats) - 1):
-            # create as a child of basicLayer
-            grid = QGraphicsLineItem(self.basicLayer)
-            grid.setLine(0, 0, self.baseMapWid, 0)
-            grid.setPen(self.mkGridPen())
-            grid.setTransform(grid.transform().translate(0, self.meshWid*(ilat+1)))
-        # --Longitude(vertical)
-        lons = self.baseMapWid / self.meshWid
-        for ilon in range(int(lons) - 1):
-            # create as a child of basicLayer
-            grid = QGraphicsLineItem(self.basicLayer)
-            grid.setLine(0, 0, 0, self.baseMapHgt)
-            grid.setPen(self.mkGridPen())
-            grid.setTransform(grid.transform().translate(self.meshWid * (ilon + 1), 0))
+        # XX Layer
 
-        # Center of The World
-        cw = self.basicLayer.rect().center()
-        centW = QGraphicsEllipseItem(self.basicLayer)
-        cwsize = 200
-        centW.setRect(cw.x(), cw.y(), cwsize, cwsize)
-        centW.setTransform(centW.transform().translate(-(cwsize/2), -(cwsize/2)))
-        centW.setBrush(QBrush(QColor('red')))
-
-        # マップ中心がWindowの中心になるように移動
-        self.centerOn(cw)
-
-
+        # show center
+        self.centerOn(self.basicLayer.centerPos())
 
     def keyPressEvent(self, event: QKeyEvent):
         # debug : center on japan
@@ -91,7 +62,6 @@ class svView(QGraphicsView):
                 self.centerOn(135.0 * self.meshWid, 37.0 * self.meshWid)
                 print('test')
 
-
     def dragEnterEvent(self, event: QDragEnterEvent):
         # check mimeData which is able to be accept
         mimeData = event.mimeData()
@@ -99,7 +69,6 @@ class svView(QGraphicsView):
             event.accept()
         else:
             event.ignore()
-
 
     def dropEvent(self, event: QDropEvent):
         # check mimeData and add object
@@ -114,7 +83,6 @@ class svView(QGraphicsView):
             if re.match(r'^\.(shp)$', ext, re.IGNORECASE):
                 if os.path.isfile(filepath):
                     self.scene().setShapeFile(filepath)
-
 
     def dragMoveEvent(self, event: QDragMoveEvent):
         # to work dragEnterEvent for QGraphicsView
@@ -143,6 +111,8 @@ class svView(QGraphicsView):
         # スケール変更
         factor = 1.0 + (self._numScheduledScalings) / 50.0
         self.scale(factor, factor)
+        self.zoomfactor = factor
+        #self.scale(10, 10)
 
         # シーン上の座標値をViewの座標値に変換
         p1 = self.mapFromScene(p0)
@@ -152,6 +122,8 @@ class svView(QGraphicsView):
         mv = QPoint(p1.x() - event.pos().x(), p1.y() - event.pos().y())
         self.addScrollBarValue(mv.x(), mv.y())
 
+        # update showing message on statusbar
+        self.updateStatusbar()
 
     def addScrollBarValue(self, dx, dy):
         # スクロールバーの現在値を変化させる
@@ -179,25 +151,88 @@ class svView(QGraphicsView):
     def mouseMoveEvent(self, event: QMouseEvent):
         super().mouseMoveEvent(event)
 
-        # =======================
-        # update status bar
-        # =======================
-        if True == self.mposShowFlg:
-            # calc diff(positive X --> East, positive Y --> South)
-            mpos = event.pos()
-            cw = self.basicLayer.rect().center()
-            diff = QPointF(mpos.x() - cw.x(), mpos.y() - cw.y())
-            # make message to show
-            EW = 'E'
-            if 0 > diff.x():
-                EW = 'W'
-            SN = 'S'
-            if 0 > diff.y():
-                SN = 'N'
-            lon = str(abs(int(diff.x() / self.resolution)))
-            lat = str(abs(int(diff.y() / self.resolution)))
-            msg = lon + EW + ' ' + lat + SN
-            self.statusbar.showMessage(msg)
+
+class BaseMap(QGraphicsRectItem):
+    def __init__(self, parent:svView):
+        # super initialize
+        super(BaseMap, self).__init__()
+        self.parentView = parent
+        self.setAcceptHoverEvents(True)
+
+        # members
+        self.resolution = 10  # pix / 度
+        self.meshWid = 1 * self.resolution
+        self.baseMapWid = 360 * self.resolution
+        self.baseMapHgt = 180 * self.resolution
+
+        # Basic Layer
+        self.setRect(0, 0, self.baseMapWid, self.baseMapHgt)
+        self.setBrush(QBrush(QColor('white')))
+        self.setFlag(QGraphicsItem.ItemIsMovable)
+
+        # Mesh Grid
+        # --Latitude(horizontal)
+        lats = self.baseMapHgt / self.meshWid
+        for ilat in range(int(lats) - 1):
+            # create as a child of basicLayer
+            grid = QGraphicsLineItem(self)
+            grid.setLine(0, 0, self.baseMapWid, 0)
+            grid.setPen(self.mkGridPen())
+            grid.setTransform(grid.transform().translate(0, self.meshWid * (ilat + 1)))
+        # --Longitude(vertical)
+        lons = self.baseMapWid / self.meshWid
+        for ilon in range(int(lons) - 1):
+            # create as a child of basicLayer
+            grid = QGraphicsLineItem(self)
+            grid.setLine(0, 0, 0, self.baseMapHgt)
+            grid.setPen(self.mkGridPen())
+            grid.setTransform(grid.transform().translate(self.meshWid * (ilon + 1), 0))
+
+        # Center of The World
+        cw = self.rect().center()
+        centW = QGraphicsEllipseItem(self)
+        cwsize = 2 * self.resolution
+        centW.setRect(cw.x(), cw.y(), cwsize, cwsize)
+        centW.setTransform(centW.transform().translate(-(cwsize / 2), -(cwsize / 2)))
+        centW.setBrush(QBrush(QColor('red')))
+
+    def centerPos(self):
+        return self.rect().center()
+
+    def mkGridPen(self):
+        gridpen = QPen(QColor('grey'))
+        gridpen.setWidth(0)
+        gridpen.setStyle(Qt.DashLine)
+        return gridpen
+
+    def updateParent(self, lon:float, lat:float, ew:str, sn:str):
+        # update parent info
+        self.parentView.mposLL[0] = lon
+        self.parentView.mposLL[1] = lat
+        self.parentView.mposNSEW[0] = ew
+        self.parentView.mposNSEW[1] = sn
+        # call "update status bar method"
+        self.parentView.updateStatusbar()
+
+    def hoverMoveEvent(self, event: 'QGraphicsSceneHoverEvent'):
+        # calculate mouse position on map(Lat Lon)
+        cent_local = self.rect().center()
+        mpos_local = event.pos()
+        diff = QPointF()
+        diff.setX(mpos_local.x() - cent_local.x())
+        diff.setY(mpos_local.y() - cent_local.y())
+
+        ew = 'E'
+        if 0 > diff.x():
+            ew = 'W'
+        sn = 'S'
+        if 0 > diff.y():
+            sn = 'N'
+        lon = abs(diff.x() / self.resolution)
+        lat = abs(diff.y() / self.resolution)
+        # update showing message
+        self.updateParent(lon,lat,ew,sn)
+
 
 
 
