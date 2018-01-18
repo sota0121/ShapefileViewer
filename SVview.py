@@ -26,7 +26,8 @@ class svView(QGraphicsView):
         # QGraphicsScene setting
         scene = SVscene.svScene(self)
         #scene.setSceneRect(QRectF(self.geometry()))
-        self.setScene(scene)
+        #self.setScene(scene)
+
 
         # Generate Base Map
         self.initBaseMap()
@@ -48,7 +49,9 @@ class svView(QGraphicsView):
         self.basicLayer = BaseMap(self)
         self.scene().addItem(self.basicLayer)
 
-        # XX Layer
+        # Map Layer1 (virtual name)
+        self.scene().setShapeFile('xx.shp')
+
 
         # show center
         self.centerOn(self.basicLayer.centerPos())
