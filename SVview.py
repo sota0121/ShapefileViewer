@@ -4,11 +4,18 @@
 python 3.6
 """
 import os
+import sys
 import re
 from PyQt5.Qt import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
+import shapefile
 import SVscene
+import SVutil as utl
+import OperateINI as inifile
+
+# ズーム倍率（単位は％ floatを使うと誤差がたまるのでintで管理）
+zoomValue = 100
 
 class svView(QGraphicsView):
     def __init__(self):
@@ -16,21 +23,45 @@ class svView(QGraphicsView):
         # member
         self._numScheduledScalings = 0
         self.mposShowFlg = True
-        self.zoomfactor = 1.0
+        self.zoom = 1.0
         self.mposLL = [0.0,0.0]
         self.mposNSEW = ['E','N']
+        self.mvObjVector = QPointF(0.0,0.0)
 
         # D&D setting
         self.setAcceptDrops(True)
 
         # QGraphicsScene setting
         scene = SVscene.svScene(self)
-        #scene.setSceneRect(QRectF(self.geometry()))
-        #self.setScene(scene)
-
+        self.setScene(scene)
 
         # Generate Base Map
         self.initBaseMap()
+
+    def RevertView(self, ini:inifile):
+        # -- revert zooming
+        self.scale(ini.zoom, ini.zoom)
+        self.zoom = ini.zoom
+
+        # -- revert scrolling
+        sb = QPoint(ini.scrollbar_x, ini.scrollbar_y)
+        self.setScrollBarValue(sb.x(), sb.y())
+
+        # -- revert moving of base map
+        mv = QPointF(ini.mv_base_x, ini.mv_base_y)
+        #cent = self.basicLayer.centerPosParent() #centerPosと挙動同じだった
+        cent = self.basicLayer.centerPos()
+        cent.setX(cent.x() - mv.x())
+        cent.setY(cent.y() - mv.y())
+        self.centerOn(cent)
+        self.mvObjVector = mv
+
+        '''
+        self.centerOn(self.basicLayer.centerPos())
+        mv = QPointF(ini.mv_base_x, ini.mv_base_y)
+        self.translateBasicLayer(mv.x(), mv.y())
+        self.mvObjVector = mv
+        '''
 
     def linkStatusbar(self, stbar: QStatusBar):
         self.statusbar = stbar
@@ -40,30 +71,60 @@ class svView(QGraphicsView):
         lat = self.mposLL[1]
         EW = self.mposNSEW[0]
         SN = self.mposNSEW[1]
-        zoomfactor = self.zoomfactor
-        msg = '{:.2f}'.format(lon) + EW + ' ' + '{:.2f}'.format(lat) + SN + ' ' + '{:.2f}'.format(zoomfactor)
+        #nss = self._numScheduledScalings
+        #msg = '{:.2f}'.format(lon) + EW + ' ' + '{:.2f}'.format(lat) + SN + ' ' + '{:.2f}'.format(nss)
+        zoom = self.zoom
+        msg = '{:.2f}'.format(lon) + EW + ' ' + '{:.2f}'.format(lat) + SN + ' ' + '{:.2f}'.format(zoom)
         self.statusbar.showMessage(msg)
 
     def initBaseMap(self):
+        '''initialize basic map'''
         # Basic Layer
         self.basicLayer = BaseMap(self)
+
+        # Map Layer (virtual name)
+        self.CreateFeatures(self.scene().shpFiles)
+
+        # add Item to scene
         self.scene().addItem(self.basicLayer)
 
-        # Map Layer1 (virtual name)
-        self.scene().setShapeFile('xx.shp')
+        # move point to look
+        #self.centerOn(self.basicLayer.centerPos())
 
+    def translateBasicLayer(self,dx,dy):
+        if dx > 0.1:
+            if dy > 0.1:
+                print('translate basemap')
+                self.basicLayer.setTransform(self.basicLayer.transform().translate(dx, dy))
 
-        # show center
-        self.centerOn(self.basicLayer.centerPos())
+    def CreateFeatures(self, shpFiles):
+        for sf in shpFiles:
+            shprecs = sf.iterShapeRecords()
+            sr_size = len(sf.shapeRecords())
+            i = 0
+            for sr in shprecs:
+                # 進捗表示
+                sys.stdout.write("\r%d / 100" % (int(i * 100 / (sr_size - 1))))
+                sys.stdout.flush()
+                i += 1
+                # gen object
+                obj = Ft_Polygon(self.basicLayer)
+                # set element points position
+                obj.setShpPointsLL(sr.shape.points)
+                # set attributes
+                for attr in sr.record:
+                    attr_str = utl.u_sjis(attr)
+                    obj.addAttribute(attr_str)
 
     def keyPressEvent(self, event: QKeyEvent):
         # debug : center on japan
         keymods = QApplication.keyboardModifiers()
         if Qt.Key_Return == event.key():
             if keymods == Qt.ControlModifier:
-                # Hyougo Akashi(N37,135E)
-                self.centerOn(135.0 * self.meshWid, 37.0 * self.meshWid)
-                print('test')
+                # basiclayer move to origin
+                # pass
+                #self.centerOn(135.0 * self.basicLayer.resolution, 37.0 * self.basicLayer.resolution)
+                print('move basemap to origin(0,0) in scene coordinates')
 
     def dragEnterEvent(self, event: QDragEnterEvent):
         # check mimeData which is able to be accept
@@ -85,7 +146,16 @@ class svView(QGraphicsView):
             #if re.match(r'^\.(shp|shx|dbf)$', ext, re.IGNORECASE):
             if re.match(r'^\.(shp)$', ext, re.IGNORECASE):
                 if os.path.isfile(filepath):
-                    self.scene().setShapeFile(filepath)
+                    # Add Shapefile
+                    ret = self.scene().setShapeFile(filepath)
+                    if False == ret:
+                        QMessageBox.warning(self, 'Warning', "Already Read!!", QMessageBox.Ok)
+                    # Add Shape Object on Viewer
+
+            else:
+                wmsg = "Format Error\n"
+                wmsg += "suppurt [*.shp, -, -]"
+                QMessageBox.warning(self,'Warning',wmsg,QMessageBox.Ok)
 
     def dragMoveEvent(self, event: QDragMoveEvent):
         # to work dragEnterEvent for QGraphicsView
@@ -100,22 +170,15 @@ class svView(QGraphicsView):
         参考1：https://wiki.qt.io/Smooth_Zoom_In_QGraphicsView/ja
         参考2：https://gist.github.com/mieki256/1b73aae707cee97fffab544af9bc0637
         '''
-        # ズーム率算出
-        numDegrees = event.angleDelta().y() / 8
-        numSteps = numDegrees / 15
-        self._numScheduledScalings += numSteps
-        # if reverse wheel
-        if 0 > (self._numScheduledScalings * numSteps):
-            self._numScheduledScalings = numSteps
+        # ズーム率取得（単位は％）
+        self.zoom = self.changeZoomValue(pow(1.2, event.angleDelta().y()/240.0)) / 100.0
 
-        # シーン上の座標値に変換
+        # 与えた座標値(View用)をシーン上の座標値に変換
         p0 = self.mapToScene(event.pos())
 
         # スケール変更
-        factor = 1.0 + (self._numScheduledScalings) / 50.0
-        self.scale(factor, factor)
-        self.zoomfactor = factor
-        #self.scale(10, 10)
+        self.resetTransform()
+        self.scale(self.zoom, self.zoom)
 
         # シーン上の座標値をViewの座標値に変換
         p1 = self.mapFromScene(p0)
@@ -127,6 +190,20 @@ class svView(QGraphicsView):
 
         # update showing message on statusbar
         self.updateStatusbar()
+
+    def changeZoomValue(self, d):
+        """ ズーム率の変数を変更 """
+        return self.clipZoomValue(zoomValue * d)
+
+    def clipZoomValue(self, zv):
+        global zoomValue
+        zoomValue = max(10, min(zv, 3200))  # 10 - 3200の範囲にする
+        zvi = int(zoomValue)
+        return zvi
+
+    def setScrollBarValue(self, x, y):
+        self.horizontalScrollBar().setValue(x)
+        self.verticalScrollBar().setValue(y)
 
     def addScrollBarValue(self, dx, dy):
         # スクロールバーの現在値を変化させる
@@ -147,7 +224,9 @@ class svView(QGraphicsView):
             self.mposShowFlg = False
 
     def mouseReleaseEvent(self, event: QMouseEvent):
+        # super
         super().mouseReleaseEvent(event)
+        # set flg
         if Qt.LeftButton == event.button():
             self.mposShowFlg = True
 
@@ -163,10 +242,12 @@ class BaseMap(QGraphicsRectItem):
         self.setAcceptHoverEvents(True)
 
         # members
-        self.resolution = 10  # pix / 度
+        self.resolution = 100  # pix / 度
         self.meshWid = 1 * self.resolution
         self.baseMapWid = 360 * self.resolution
         self.baseMapHgt = 180 * self.resolution
+        self.cur_mv_sta = QPointF(0.0,0.0)
+        self.cur_mv_end = QPointF(0.0,0.0)
 
         # Basic Layer
         self.setRect(0, 0, self.baseMapWid, self.baseMapHgt)
@@ -199,8 +280,37 @@ class BaseMap(QGraphicsRectItem):
         centW.setTransform(centW.transform().translate(-(cwsize / 2), -(cwsize / 2)))
         centW.setBrush(QBrush(QColor('red')))
 
+    def mousePressEvent(self, event: 'QGraphicsSceneMouseEvent'):
+        # super
+        super().mousePressEvent(event)
+
+        # ベース地図の移動ベクトル始点取得
+        self.cur_mv_sta = event.scenePos()
+
+    def mouseReleaseEvent(self, event: 'QGraphicsSceneMouseEvent'):
+        # super
+        super().mouseReleaseEvent(event)
+
+        # ベース地図の移動ベクトル終点取得
+        self.cur_mv_end = event.scenePos()
+
+        # ベース地図の移動ベクトル計算
+        mv = self.cur_mv_end
+        mv -= self.cur_mv_sta
+
+        # 移動ベクトルの加算（最終的な移動度の更新）
+        self.parentView.mvObjVector += mv
+        MV = self.parentView.mvObjVector
+        #print('X : ' + '{:.2f}'.format(MV.x()))
+        #print('Y : ' + '{:.2f}'.format(MV.y()))
+
     def centerPos(self):
         return self.rect().center()
+
+    def centerPosParent(self):
+        c = self.rect().center()
+        cp = self.mapToParent(c)
+        return cp
 
     def mkGridPen(self):
         gridpen = QPen(QColor('grey'))
@@ -236,6 +346,50 @@ class BaseMap(QGraphicsRectItem):
         # update showing message
         self.updateParent(lon,lat,ew,sn)
 
+
+class Ft_Polygon(QGraphicsPolygonItem):
+    def __init__(self, parent:BaseMap):
+        super(Ft_Polygon, self).__init__(parent)
+        self.attributes = []
+        self.shpPointsLL = []
+        self.baseMap = parent
+
+    def addAttribute(self, attr:str):
+        self.attributes.append(attr)
+
+    def attributes(self):
+        return self.attributes
+
+    def setShpPointsLL(self, shpPoints:list):
+        # set position lat lon
+        global_polygon = QPolygonF()
+        for sp in shpPoints:
+            ll = (sp[0], sp[1]) # 0:Lon, 1:Lat
+            self.shpPointsLL.append(ll)
+
+            # calc translation for mapping to parent
+            map_ratio = self.baseMap.resolution
+            point = QPointF(sp[0]*map_ratio, sp[1]*map_ratio*(-1))
+            global_polygon.append(point)
+
+        # set polygon
+        self.setPolygon(global_polygon)
+        self.setBrush(QBrush(QColor('orange')))
+        self.setPen(self.mkOutlinePen())
+        cw = self.baseMap.centerPos()
+        self.setTransform(self.transform().translate(cw.x(),cw.y()))
+
+
+        '''
+        cp = self.baseMap.centerPos()
+        self.baseMap.resolution
+        '''
+
+    def mkOutlinePen(self):
+        OutLinepen = QPen(QColor('black'))
+        OutLinepen.setWidth(0)
+        OutLinepen.setStyle(Qt.SolidLine)
+        return OutLinepen
 
 
 

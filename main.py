@@ -15,6 +15,7 @@ import configparser
 # THIS PACK IMPORT
 import SVview
 import OperateINI
+import SVutil as utl
 
 class MainWindow(QWidget):
     def __init__(self):
@@ -60,7 +61,6 @@ class MainWindow(QWidget):
         # set window geometry from history
         # --Loadini
         initInfo = OperateINI.iniLoader()
-
         # --init window info
         if initInfo.empty():
             self.setGeometry(300, 300, 500, 500)
@@ -75,6 +75,9 @@ class MainWindow(QWidget):
         self.setWindowFilePath('ShapefileViewer')
         self.setWindowIcon(QIcon('img/panda_icon.png'))
 
+        # Revert View
+        self.graphicsView.RevertView(initInfo)
+
         # status bar
 
 
@@ -87,15 +90,33 @@ class MainWindow(QWidget):
         # get window size info
         rect = self.geometry()
 
+        # get last zoom
+        zoom = self.graphicsView.zoom
+
+        # get last scrollbar
+        scrollBar_x = self.graphicsView.horizontalScrollBar().value()
+        scrollBar_y = self.graphicsView.verticalScrollBar().value()
+
+        # get move vector of Base map
+        mv_base_x = self.graphicsView.mvObjVector.x()
+        mv_base_y = self.graphicsView.mvObjVector.y()
+
         # init value
         inifile = configparser.ConfigParser()
         inifile['App'] = {'WND_X': '-1', 'WND_Y': '-1',
-                          'WND_WID': '-1', 'WND_HGT': '-1'}
+                          'WND_WID': '-1', 'WND_HGT': '-1',
+                          'ZOOM': '0.0', 'SCROLBAR_X': '0','SCROLBAR_Y':'0',
+                          'MV_BASE_X': '0.0','MV_BASE_Y': '0.0'}
         # save
         inifile['App']['WND_X'] = str(rect.x())
         inifile['App']['WND_Y'] = str(rect.y())
         inifile['App']['WND_WID'] = str(rect.width())
         inifile['App']['WND_HGT'] = str(rect.height())
+        inifile['App']['ZOOM'] = '{:.2f}'.format(zoom)
+        inifile['App']['SCROLBAR_X'] = str(scrollBar_x)
+        inifile['App']['SCROLBAR_Y'] = str(scrollBar_y)
+        inifile['App']['MV_BASE_X'] = '{:.2f}'.format(mv_base_x)
+        inifile['App']['MV_BASE_Y'] = '{:.2f}'.format(mv_base_y)
         with open('./config.ini', 'w') as configfile:
             inifile.write(configfile)
 
