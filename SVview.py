@@ -44,8 +44,8 @@ class svView(QGraphicsView):
         self.zoom = ini.zoom
 
         # -- revert scrolling
-        #sb = QPoint(ini.scrollbar_x, ini.scrollbar_y)
-        #self.setScrollBarValue(sb.x(), sb.y())
+        sb = QPoint(ini.scrollbar_x, ini.scrollbar_y)
+        self.setScrollBarValue(sb.x(), sb.y())
 
         # -- revert moving of base map
         mv = QPointF(ini.mv_base_x, ini.mv_base_y)
@@ -53,7 +53,7 @@ class svView(QGraphicsView):
         cent = self.basicLayer.centerPos()
         cent.setX(cent.x() - mv.x())
         cent.setY(cent.y() - mv.y())
-        self.centerOn(cent) #CenterOnによりsetScrollBarが掻き消される
+        self.centerOn(cent)
         self.mvObjVector = mv
 
         '''
@@ -87,7 +87,6 @@ class svView(QGraphicsView):
 
         # add Item to scene
         self.scene().addItem(self.basicLayer)
-        #self.scene().setSceneRect(self.basicLayer.rect())
 
         # move point to look
         #self.centerOn(self.basicLayer.centerPos())
@@ -116,7 +115,6 @@ class svView(QGraphicsView):
                 for attr in sr.record:
                     attr_str = utl.u_sjis(attr)
                     obj.addAttribute(attr_str)
-            sys.stdout.write("\n")
 
     def keyPressEvent(self, event: QKeyEvent):
         # debug : center on japan
@@ -234,7 +232,6 @@ class svView(QGraphicsView):
 
     def mouseMoveEvent(self, event: QMouseEvent):
         super().mouseMoveEvent(event)
-        #event.pos()
 
 
 class BaseMap(QGraphicsRectItem):
@@ -245,14 +242,12 @@ class BaseMap(QGraphicsRectItem):
         self.setAcceptHoverEvents(True)
 
         # members
-        self.resolution = 10  # pix / 度
+        self.resolution = 100  # pix / 度
         self.meshWid = 1 * self.resolution
         self.baseMapWid = 360 * self.resolution
         self.baseMapHgt = 180 * self.resolution
         self.cur_mv_sta = QPointF(0.0,0.0)
         self.cur_mv_end = QPointF(0.0,0.0)
-        self.mvBgnPoint = QPointF(0, 0)
-        self.onDrag = False
 
         # Basic Layer
         self.setRect(0, 0, self.baseMapWid, self.baseMapHgt)
@@ -285,52 +280,19 @@ class BaseMap(QGraphicsRectItem):
         centW.setTransform(centW.transform().translate(-(cwsize / 2), -(cwsize / 2)))
         centW.setBrush(QBrush(QColor('red')))
 
-    def mouseMoveEvent(self, event: 'QGraphicsSceneMouseEvent'):
-        # move base map with scroll bar
-        if True == self.onDrag:
-            curpos = event.pos()
-            # 移動度
-            mvvec = curpos
-            mvvec -= self.mvBgnPoint
-            mvvec.setX((mvvec.x() / self.resolution))
-            mvvec.setY((mvvec.y() / self.resolution))
-            # 移動開始点の更新
-            self.mvBgnPoint = curpos
-            # 移動の適用@scroll bar
-            self.parentView.addScrollBarValue(int(mvvec.x()),int(mvvec.y()))
-            # --------------
-            print("vec: " + str(int(mvvec.x())) + ", " + str(int(mvvec.y())))
-            # --------------
-
-
     def mousePressEvent(self, event: 'QGraphicsSceneMouseEvent'):
         # super
         super().mousePressEvent(event)
 
-        # get point
-        if Qt.LeftButton == event.button():
-            # ドラッグ開始位置
-            self.mvBgnPoint = event.pos()
-            #bgp = event.pos()
-            #self.mvBgnPoint = QPoint(int(bgp.x()),int(bgp.y()))
-            # --------
-            p = self.mvBgnPoint
-            print("START DRAG: " + str(p.x()) + ", " + str(p.y()))
-            # --------
-            self.onDrag = True
-            # ベース地図の移動ベクトル始点取得
-            self.cur_mv_sta = event.scenePos()
+        # ベース地図の移動ベクトル始点取得
+        self.cur_mv_sta = event.scenePos()
 
     def mouseReleaseEvent(self, event: 'QGraphicsSceneMouseEvent'):
         # super
         super().mouseReleaseEvent(event)
 
-        # release
-        if Qt.LeftButton == event.button():
-            # ドラッグ終了
-            self.onDrag = False
-            # ベース地図の移動ベクトル終点取得
-            self.cur_mv_end = event.scenePos()
+        # ベース地図の移動ベクトル終点取得
+        self.cur_mv_end = event.scenePos()
 
         # ベース地図の移動ベクトル計算
         mv = self.cur_mv_end
@@ -338,7 +300,7 @@ class BaseMap(QGraphicsRectItem):
 
         # 移動ベクトルの加算（最終的な移動度の更新）
         self.parentView.mvObjVector += mv
-        #MV = self.parentView.mvObjVector
+        MV = self.parentView.mvObjVector
         #print('X : ' + '{:.2f}'.format(MV.x()))
         #print('Y : ' + '{:.2f}'.format(MV.y()))
 
