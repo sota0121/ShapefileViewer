@@ -34,10 +34,6 @@ class iniLoader():
                 self.height = inifile.getint('App', 'WND_HGT')
             if 'ZOOM' in appsection:
                 self.zoom = inifile.getfloat('App', 'ZOOM')
-            if 'SCROLBAR_X' in appsection:
-                self.scrollbar_x = inifile.getint('App', 'SCROLBAR_X')
-            if 'SCROLBAR_Y' in appsection:
-                self.scrollbar_y = inifile.getint('App', 'SCROLBAR_Y')
             if 'MV_BASE_X' in appsection:
                 self.mv_base_x = inifile.getfloat('App', 'MV_BASE_X')
             if 'MV_BASE_Y' in appsection:
@@ -54,10 +50,6 @@ class iniLoader():
         if -1 == self.height:
             return True
         if 0.0 == self.zoom:
-            return True
-        if 0 == self.scrollbar_x:
-            return True
-        if 0 == self.scrollbar_y:
             return True
         else:
             return False

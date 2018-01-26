@@ -94,8 +94,8 @@ class MainWindow(QWidget):
         zoom = self.graphicsView.zoom
 
         # get last scrollbar
-        scrollBar_x = self.graphicsView.horizontalScrollBar().value()
-        scrollBar_y = self.graphicsView.verticalScrollBar().value()
+        #scrollBar_x = self.graphicsView.horizontalScrollBar().value()
+        #scrollBar_y = self.graphicsView.verticalScrollBar().value()
 
         # get move vector of Base map
         mv_base_x = self.graphicsView.mvObjVector.x()
@@ -105,16 +105,14 @@ class MainWindow(QWidget):
         inifile = configparser.ConfigParser()
         inifile['App'] = {'WND_X': '-1', 'WND_Y': '-1',
                           'WND_WID': '-1', 'WND_HGT': '-1',
-                          'ZOOM': '0.0', 'SCROLBAR_X': '0','SCROLBAR_Y':'0',
-                          'MV_BASE_X': '0.0','MV_BASE_Y': '0.0'}
+                          'ZOOM': '0.0','MV_BASE_X': '0.0',
+                          'MV_BASE_Y': '0.0'}
         # save
         inifile['App']['WND_X'] = str(rect.x())
         inifile['App']['WND_Y'] = str(rect.y())
         inifile['App']['WND_WID'] = str(rect.width())
         inifile['App']['WND_HGT'] = str(rect.height())
         inifile['App']['ZOOM'] = '{:.2f}'.format(zoom)
-        inifile['App']['SCROLBAR_X'] = str(scrollBar_x)
-        inifile['App']['SCROLBAR_Y'] = str(scrollBar_y)
         inifile['App']['MV_BASE_X'] = '{:.2f}'.format(mv_base_x)
         inifile['App']['MV_BASE_Y'] = '{:.2f}'.format(mv_base_y)
         with open('./config.ini', 'w') as configfile:
