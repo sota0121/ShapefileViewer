@@ -83,7 +83,7 @@ class svView(QGraphicsView):
         self.basicLayer = BaseMap(self)
 
         # Map Layer (virtual name)
-        self.CreateFeatures(self.scene().shpFiles)
+        self.CreateFeaturesByShps(self.scene().shpFiles)
 
         # add Item to scene
         self.scene().addItem(self.basicLayer)
@@ -97,24 +97,29 @@ class svView(QGraphicsView):
                 print('translate basemap')
                 self.basicLayer.setTransform(self.basicLayer.transform().translate(dx, dy))
 
-    def CreateFeatures(self, shpFiles):
+    def CreateFeaturesByShp(self, shpFile):
+        shprecs = shpFile.iterShapeRecords()
+        sr_size = len(shpFile.shapeRecords())
+        i = 0
+        for sr in shprecs:
+            # 進捗表示
+            sys.stdout.write("\r%d / 100" % (int(i * 100 / (sr_size - 1))))
+            sys.stdout.flush()
+            i += 1
+            # gen object
+            obj = Ft_Polygon(self.basicLayer)
+            # set element points position
+            obj.setShpPointsLL(sr.shape.points)
+            # set attributes
+            for attr in sr.record:
+                attr_str = utl.u_sjis(attr)
+                obj.addAttribute(attr_str)
+        sys.stdout.write("\n")
+
+
+    def CreateFeaturesByShps(self, shpFiles):
         for sf in shpFiles:
-            shprecs = sf.iterShapeRecords()
-            sr_size = len(sf.shapeRecords())
-            i = 0
-            for sr in shprecs:
-                # 進捗表示
-                sys.stdout.write("\r%d / 100" % (int(i * 100 / (sr_size - 1))))
-                sys.stdout.flush()
-                i += 1
-                # gen object
-                obj = Ft_Polygon(self.basicLayer)
-                # set element points position
-                obj.setShpPointsLL(sr.shape.points)
-                # set attributes
-                for attr in sr.record:
-                    attr_str = utl.u_sjis(attr)
-                    obj.addAttribute(attr_str)
+            self.CreateFeaturesByShp(sf)
 
     def keyPressEvent(self, event: QKeyEvent):
         # debug : center on japan
@@ -151,6 +156,8 @@ class svView(QGraphicsView):
                     if False == ret:
                         QMessageBox.warning(self, 'Warning', "Already Read!!", QMessageBox.Ok)
                     # Add Shape Object on Viewer
+                    sf = shapefile.Reader(filepath)
+                    self.CreateFeaturesByShp(sf)
 
             else:
                 wmsg = "Format Error\n"
@@ -242,7 +249,7 @@ class BaseMap(QGraphicsRectItem):
         self.setAcceptHoverEvents(True)
 
         # members
-        self.resolution = 100  # pix / 度
+        self.resolution = 10  # pix / 度
         self.meshWid = 1 * self.resolution
         self.baseMapWid = 360 * self.resolution
         self.baseMapHgt = 180 * self.resolution
