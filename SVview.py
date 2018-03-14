@@ -27,6 +27,11 @@ class svView(QGraphicsView):
         self.mposLL = [0.0,0.0]
         self.mposNSEW = ['E','N']
         self.mvObjVector = QPointF(0.0,0.0)
+        self.mousePressed = False
+        self.prePosition = QPoint()
+        self.delta = QPoint()
+        self.ratio = 1.0
+        self.timerID = 0
 
         # D&D setting
         self.setAcceptDrops(True)
@@ -130,6 +135,14 @@ class svView(QGraphicsView):
                 # pass
                 #self.centerOn(135.0 * self.basicLayer.resolution, 37.0 * self.basicLayer.resolution)
                 print('move basemap to origin(0,0) in scene coordinates')
+        elif Qt.Key_Up == event.key():
+            self.addScrollBarValue(0, -10)
+        elif Qt.Key_Down == event.key():
+            self.addScrollBarValue(0, 10)
+        elif Qt.Key_Left == event.key():
+            self.addScrollBarValue(-10, 0)
+        elif Qt.Key_Right == event.key():
+            self.addScrollBarValue(10, 0)
 
     def dragEnterEvent(self, event: QDragEnterEvent):
         # check mimeData which is able to be accept
@@ -226,19 +239,44 @@ class svView(QGraphicsView):
         self.setMouseTracking(False)
 
     def mousePressEvent(self, event: QMouseEvent):
-        super().mousePressEvent(event)
         if Qt.LeftButton == event.button():
             self.mposShowFlg = False
+            # drag用
+            self.mousePressed = True
+            self.prePosition = event.pos()
+            self.delta = QPoint()
+            self.ratio = 1.0
+            self.timerID = self.startTimer(20)
+            print("mouse pressed")
+        super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event: QMouseEvent):
-        # super
-        super().mouseReleaseEvent(event)
         # set flg
         if Qt.LeftButton == event.button():
             self.mposShowFlg = True
+            self.mousePressed = False
+            print("mouse released")
+        # super
+        super().mouseReleaseEvent(event)
 
     def mouseMoveEvent(self, event: QMouseEvent):
+        if self.mousePressed:
+            self.delta.setX(event.pos().x() - self.prePosition.x())
+            self.delta.setY(event.pos().y() - self.prePosition.y())
+            self.prePosition = event.pos()
+            self.addScrollBarValue(-self.delta.x(), -self.delta.y())
         super().mouseMoveEvent(event)
+
+    def timerEvent(self, event: 'QTimerEvent'):
+        #if (self.timerID == event.timerId()) and (True == self.mousePressed):
+            #if (self.delta == QPoint()) or (self.ratio < 0.01):
+                #self.killTimer(self.timerID)
+                #return
+            #dx = self.delta.x() * self.ratio
+            #dy = self.delta.y() * self.ratio
+            #self.addScrollBarValue(dx, dy)
+            #self.addScrollBarValue(10, 10)
+        super().timerEvent(event)
 
 
 class BaseMap(QGraphicsRectItem):
@@ -247,6 +285,7 @@ class BaseMap(QGraphicsRectItem):
         super(BaseMap, self).__init__()
         self.parentView = parent
         self.setAcceptHoverEvents(True)
+        self.setFlag(QGraphicsItem.ItemIsMovable, False)
 
         # members
         self.resolution = 10  # pix / 度
@@ -259,7 +298,7 @@ class BaseMap(QGraphicsRectItem):
         # Basic Layer
         self.setRect(0, 0, self.baseMapWid, self.baseMapHgt)
         self.setBrush(QBrush(QColor('white')))
-        self.setFlag(QGraphicsItem.ItemIsMovable)
+        self.setFlag(QGraphicsItem.ItemIsMovable, enabled=False)
 
         # Mesh Grid
         # --Latitude(horizontal)
