@@ -15,7 +15,7 @@ import SVutil as utl
 import OperateINI as inifile
 
 # ズーム倍率（単位は％ floatを使うと誤差がたまるのでintで管理）
-zoomValue = 100
+#zoomValue = 100
 
 class svView(QGraphicsView):
     def __init__(self):
@@ -32,6 +32,8 @@ class svView(QGraphicsView):
         self.delta = QPoint()
         self.ratio = 1.0
         self.timerID = 0
+        # ズーム倍率（単位は％ floatを使うと誤差がたまるのでintで管理）
+        self.zoomValue = 100
 
         # D&D setting
         self.setAcceptDrops(True)
@@ -47,6 +49,9 @@ class svView(QGraphicsView):
         # -- revert zooming
         self.scale(ini.zoom, ini.zoom)
         self.zoom = ini.zoom
+        # iniに値がある場合のみ設定（それ以外は初期値100を用いる）
+        if ini.zoomValue > 0:
+            self.zoomValue = ini.zoomValue
 
         # -- revert scrolling
         sb = QPoint(ini.scrollbar_x, ini.scrollbar_y)
@@ -213,12 +218,11 @@ class svView(QGraphicsView):
 
     def changeZoomValue(self, d):
         """ ズーム率の変数を変更 """
-        return self.clipZoomValue(zoomValue * d)
+        return self.clipZoomValue(self.zoomValue * d)
 
     def clipZoomValue(self, zv):
-        global zoomValue
-        zoomValue = max(10, min(zv, 3200))  # 10 - 3200の範囲にする
-        zvi = int(zoomValue)
+        self.zoomValue = max(10, min(zv, 3200))  # 10 - 3200の範囲にする
+        zvi = int(self.zoomValue)
         return zvi
 
     def setScrollBarValue(self, x, y):
@@ -247,7 +251,6 @@ class svView(QGraphicsView):
             self.delta = QPoint()
             self.ratio = 1.0
             self.timerID = self.startTimer(20)
-            print("mouse pressed")
         super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event: QMouseEvent):
@@ -255,10 +258,10 @@ class svView(QGraphicsView):
         if Qt.LeftButton == event.button():
             self.mposShowFlg = True
             self.mousePressed = False
-            print("mouse released")
         # super
         super().mouseReleaseEvent(event)
 
+    # ref : https://gist.github.com/Atsushi4/3761749
     def mouseMoveEvent(self, event: QMouseEvent):
         if self.mousePressed:
             self.delta.setX(event.pos().x() - self.prePosition.x())

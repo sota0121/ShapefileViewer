@@ -92,6 +92,7 @@ class MainWindow(QWidget):
 
         # get last zoom
         zoom = self.graphicsView.zoom
+        zoomValue = self.graphicsView.zoomValue
 
         # get last scrollbar
         scrollBar_x = self.graphicsView.horizontalScrollBar().value()
@@ -105,7 +106,8 @@ class MainWindow(QWidget):
         inifile = configparser.ConfigParser()
         inifile['App'] = {'WND_X': '-1', 'WND_Y': '-1',
                           'WND_WID': '-1', 'WND_HGT': '-1',
-                          'ZOOM': '0.0', 'SCROLBAR_X': '0','SCROLBAR_Y':'0',
+                          'ZOOM': '0.0', 'ZOOM_VAL': '100',
+                          'SCROLBAR_X': '0','SCROLBAR_Y':'0',
                           'MV_BASE_X': '0.0','MV_BASE_Y': '0.0'}
         # save
         inifile['App']['WND_X'] = str(rect.x())
@@ -113,6 +115,7 @@ class MainWindow(QWidget):
         inifile['App']['WND_WID'] = str(rect.width())
         inifile['App']['WND_HGT'] = str(rect.height())
         inifile['App']['ZOOM'] = '{:.2f}'.format(zoom)
+        inifile['App']['ZOOM_VAL'] = '{:.2f}'.format(zoomValue)
         inifile['App']['SCROLBAR_X'] = str(scrollBar_x)
         inifile['App']['SCROLBAR_Y'] = str(scrollBar_y)
         inifile['App']['MV_BASE_X'] = '{:.2f}'.format(mv_base_x)
