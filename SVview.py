@@ -10,6 +10,8 @@ from PyQt5.Qt import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 import shapefile
+from PyQt5.QtWidgets import QGraphicsPathItem
+
 import SVscene
 import SVutil as utl
 import OperateINI as inifile
@@ -107,23 +109,56 @@ class svView(QGraphicsView):
                 print('translate basemap')
                 self.basicLayer.setTransform(self.basicLayer.transform().translate(dx, dy))
 
+    def CreateFeatureObj(self, shpType :int, shape):
+        # Point / PointZ / PointM
+        if (shpType == 1) or (shpType == 11) or (shpType == 21):
+            # gen obj
+            obj = Ft_Point(self.basicLayer)
+            # set obj
+            obj.setShpPointLL(shape)
+        # PolyLine / PolylineZ / PolylineM
+        elif (shpType == 3) or (shpType == 13) or (shpType == 23):
+            # gen obj
+            obj = Ft_Polyline(self.basicLayer)
+            # set obj
+            obj.setShpPolylineLL(shape)
+        # Polygon / PolygonZ / PolygonM
+        elif (shpType == 5) or (shpType == 15) or (shpType == 25):
+            # gen obj
+            obj = Ft_Polygon(self.basicLayer)
+            # set obj
+            obj.setShpPolygonLL(shape)
+            return obj
+
+
     def CreateFeaturesByShp(self, shpFile):
+        # shapeType取得（ファイル内統一 ※Null Shape 除く）
+        shpType = shpFile.shapeType
+
+        # Error because of shape type is "Null Shape"
+        if shpType == 0:
+            print("ERROR : This shapefile has Null Shape data")
+            return -1
+
+        # record 単位の処理
         shprecs = shpFile.iterShapeRecords()
-        sr_size = len(shpFile.shapeRecords())
+        sr_size = shpFile.numRecords
         i = 0
         for sr in shprecs:
             # 進捗表示
             sys.stdout.write("\r%d / 100" % (int(i * 100 / (sr_size - 1))))
             sys.stdout.flush()
-            i += 1
+
             # gen object
-            obj = Ft_Polygon(self.basicLayer)
-            # set element points position
-            obj.setShpPointsLL(sr.shape.points)
-            # set attributes
-            for attr in sr.record:
-                attr_str = utl.u_sjis(attr)
-                obj.addAttribute(attr_str)
+            obj = self.CreateFeatureObj(shpType, sr.shape)
+
+            # set attributes(shape ファイルごとに実装しないといけない)
+            #for attr in sr.record:
+                #attr_str = utl.u_sjis(attr)
+                #obj.addAttribute(attr_str)
+            # index increment
+            i += 1
+
         sys.stdout.write("\n")
 
 
@@ -196,7 +231,7 @@ class svView(QGraphicsView):
         参考2：https://gist.github.com/mieki256/1b73aae707cee97fffab544af9bc0637
         '''
         # ズーム率取得（単位は％）
-        self.zoom = self.changeZoomValue(pow(1.2, event.angleDelta().y()/240.0)) / 100.0
+        self.zoom = self.changeZoomValue(pow(1.8, event.angleDelta().y()/240.0)) / 100.0
 
         # 与えた座標値(View用)をシーン上の座標値に変換
         p0 = self.mapToScene(event.pos())
@@ -221,7 +256,7 @@ class svView(QGraphicsView):
         return self.clipZoomValue(self.zoomValue * d)
 
     def clipZoomValue(self, zv):
-        self.zoomValue = max(10, min(zv, 3200))  # 10 - 3200の範囲にする
+        self.zoomValue = max(10, min(zv, 128000))  # 10 - XXXの範囲にする
         zvi = int(self.zoomValue)
         return zvi
 
@@ -409,30 +444,50 @@ class Ft_Polygon(QGraphicsPolygonItem):
     def attributes(self):
         return self.attributes
 
-    def setShpPointsLL(self, shpPoints:list):
-        # set position lat lon
-        global_polygon = QPolygonF()
-        for sp in shpPoints:
-            ll = (sp[0], sp[1]) # 0:Lon, 1:Lat
-            self.shpPointsLL.append(ll)
-
-            # calc translation for mapping to parent
-            map_ratio = self.baseMap.resolution
-            point = QPointF(sp[0]*map_ratio, sp[1]*map_ratio*(-1))
-            global_polygon.append(point)
-
-        # set polygon
-        self.setPolygon(global_polygon)
-        self.setBrush(QBrush(QColor('orange')))
-        self.setPen(self.mkOutlinePen())
+    def setShpPolygonLL(self, shp):
+        # part 単位で処理
+        bgnIdx = 0
+        lastIdx = len(shp.points) - 1
+        map_ratio = self.baseMap.resolution
         cw = self.baseMap.centerPos()
-        self.setTransform(self.transform().translate(cw.x(),cw.y()))
+        for ipart in range(len(shp.parts) + 1):
+            if 0 == ipart:
+                continue
+            # ------------------
+            # update end index
+            # ------------------
+            endIdx = 0
+            if ipart == len(shp.parts):
+                endIdx = lastIdx
+            else:
+                endIdx = shp.parts[ipart]
 
+            # ------------------
+            # set a part
+            #  --> from bgn to end
+            # ------------------
+            # set position lat lon
+            global_polygon = QPolygonF()
+            for ipnt in range(bgnIdx, endIdx):
+                sp = shp.points[ipnt]
+                ll = (sp[0], sp[1])  # 0:Lon, 1:Lat
+                self.shpPointsLL.append(ll)
 
-        '''
-        cp = self.baseMap.centerPos()
-        self.baseMap.resolution
-        '''
+                # calc translation for mapping to parent
+                point = QPointF(sp[0] * map_ratio, sp[1] * map_ratio * (-1))
+                global_polygon.append(point)
+
+            # set polygon
+            self.setPolygon(global_polygon)
+            self.setBrush(QBrush(QColor('orange')))
+            self.setPen(self.mkOutlinePen())
+            self.setTransform(self.transform().translate(cw.x(), cw.y()))
+
+            # ------------------
+            # update bgn index
+            # ------------------
+            bgnIdx = endIdx
+
 
     def mkOutlinePen(self):
         OutLinepen = QPen(QColor('black'))
@@ -440,5 +495,114 @@ class Ft_Polygon(QGraphicsPolygonItem):
         OutLinepen.setStyle(Qt.SolidLine)
         return OutLinepen
 
+class Ft_Polyline(QGraphicsPathItem):
+    def __init__(self, parent:BaseMap):
+        super(Ft_Polyline, self).__init__(parent)
+        self.attributes = []
+        self.shpPointsLL = []
+        self.baseMap = parent
+
+    def addAttribute(self, attr:str):
+        self.attributes.append(attr)
+
+    def attributes(self):
+        return self.attributes
+
+    def setShpPolylineLL(self, shp):
+        # part 単位で処理
+        bgnIdx = 0
+        lastIdx = len(shp.points) - 1
+        map_ratio = self.baseMap.resolution
+        for ipart in range(len(shp.parts) + 1):
+            if 0 == ipart:
+                continue
+            # ------------------
+            # update end index
+            # ------------------
+            endIdx = 0
+            if ipart == len(shp.parts):
+                endIdx = lastIdx
+            else:
+                endIdx = shp.parts[ipart]
+
+            # ------------------
+            # set a part
+            #  --> from bgn to end
+            # ------------------
+            # set position lat lon
+            global_line = QPainterPath()
+            # -- zero index
+            sp0 = shp.points[bgnIdx]
+            point0 = QPointF(sp0[0]*map_ratio, sp0[1]*map_ratio*(-1))
+            global_line.moveTo(point0.x(), point0.y())
+
+            # -- from 1 index
+            for ipnt in range(bgnIdx, endIdx):
+                if bgnIdx == ipnt:
+                    continue
+                sp = shp.points[ipnt]
+                ll = (sp[0], sp[1]) # 0:Lon, 1:Lat
+                self.shpPointsLL.append(ll)
+
+                # calc translation for mapping to parent
+                point = QPointF(sp[0]*map_ratio, sp[1]*map_ratio*(-1))
+                global_line.lineTo(point.x(), point.y())
+
+            # set polyline
+            self.setPath(global_line)
+            self.setPen(self.mkOutlinePen())
+            cw = self.baseMap.centerPos()
+            self.setTransform(self.transform().translate(cw.x(),cw.y()))
+
+            # ------------------
+            # update bgn index
+            # ------------------
+            bgnIdx = endIdx
 
 
+    def mkOutlinePen(self):
+        OutLinepen = QPen(QColor('blue'))
+        OutLinepen.setWidth(0)
+        OutLinepen.setStyle(Qt.SolidLine)
+        return OutLinepen
+
+class Ft_Point(QGraphicsEllipseItem):
+    def __init__(self, parent:BaseMap):
+        super(Ft_Point, self).__init__(parent)
+        self.attributes = []
+        self.shpPointsLL = []
+        self.baseMap = parent
+
+    def addAttribute(self, attr:str):
+        self.attributes.append(attr)
+
+    def attributes(self):
+        return self.attributes
+
+    def setShpPointLL(self, shp):
+        if 0 == len(shp.points):
+            return
+        # set position lat lon
+        global_point = QPointF()
+        sp = shp.points[0]
+        ll = (sp[0], sp[1])  # 0:Lon, 1:Lat
+        self.shpPointsLL.append(ll)
+
+        # calc translation for mapping to parent
+        map_ratio = self.baseMap.resolution
+        point = QPointF(sp[0] * map_ratio, sp[1] * map_ratio * (-1))
+        global_point.setX(point.x())
+        global_point.setY(point.y())
+
+        # set ellipse
+        self.setRect(global_point.x(), global_point.y(), 0.1, 0.1)
+        self.setBrush(QBrush(QColor('green')))
+        self.setPen(self.mkOutlinePen())
+        cw = self.baseMap.centerPos()
+        self.setTransform(self.transform().translate(cw.x(),cw.y()))
+
+    def mkOutlinePen(self):
+        OutLinepen = QPen(QColor('black'))
+        OutLinepen.setWidth(0)
+        OutLinepen.setStyle(Qt.SolidLine)
+        return OutLinepen
